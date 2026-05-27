@@ -13,7 +13,9 @@ The default protocol lives in [`ryot.md`](ryot.md).
 3. Once the process is started, start the second agent.
 4. In the coding panel, ask the second agent to join the RYOT process.
 
-Different branches contain example working scenarios for Claude and Codex.
+Different branches contain example working scenarios for Claude and Codex. A
+working branch is maintained at `claude_codex_example` for anyone who wants
+something that kinda works out of the box.
 
 ## Keeping Agents Polling
 
