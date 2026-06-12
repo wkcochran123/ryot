@@ -4,7 +4,8 @@ RYOT means **Roll Your Own Talent**.
 
 Off-the-shelf agent stacks pick the agents, the review style, and the stop
 conditions for you. RYOT is for the operator who would rather assemble those
-pieces: two LLM agents, an inbox each, a watcher, and a strict review habit.
+pieces: two LLM agents, an inbox each, prompt-timer wakeups, and a strict
+review habit.
 RYOT is small on purpose. It is not a task queue, a chat server, or a substitute
 for human approval. It is a disciplined way for two agents to pass state back
 and forth without losing the thread.
@@ -15,12 +16,12 @@ Use **RYOT** as the name of the system.
 
 Use **Roll Your Own Talent** when expanding the acronym for a new reader.
 
-Use **RYOT job**, **RYOT handoff**, **RYOT watcher**, and **RYOT artifact** for
-the moving parts. Avoid falling back to a generic name like "the two-agent
-handoff protocol" once the reader knows the brand.
+Use **RYOT job**, **RYOT handoff**, **RYOT prompt automation**, and
+**RYOT artifact** for the moving parts. Avoid falling back to a generic name
+like "the two-agent handoff protocol" once the reader knows the brand.
 
-Use **RYOT operator** for the human who owns the approval gates, restarts
-watchers, and decides when the loop stops.
+Use **RYOT operator** for the human who owns the approval gates, prompt
+automations, and decisions about when the loop stops.
 
 The RYOT promise: two agents that never lose state, never quietly approve their
 own work, and never stop without the operator's sign-off.
@@ -34,9 +35,10 @@ notes_for_agent_a.md  <- written by Agent B, read by Agent A
 notes_for_agent_b.md  <- written by Agent A, read by Agent B
 ```
 
-A RYOT watcher polls each inbox, reads the first `HANDOFF` header, ignores stale
-or misaddressed messages, prints new messages, and records the last processed
-turn in a state file.
+A RYOT prompt automation wakes the receiving agent on a cadence. At each wake
+the agent reads its inbox directly, compares the latest valid `HANDOFF` turn
+against its handled-state file, handles the current safe unit of work, records
+the handled turn only after acting, and then stops.
 
 ## Wake Discipline
 
@@ -53,31 +55,15 @@ the current artifact has an unresolved failed check
 
 For active editing loops, use a tight wake cadence while work is moving. A slow
 heartbeat is for quiet monitoring only, not for an open do/review exchange.
-When a wake accepts a section and assigns the next section, it should either
-continue polling briefly for the response or leave an automation with a short
-interval and a drain-all instruction.
+When a wake accepts a section and assigns the next section, it leaves the
+thread automation active with a short interval and a drain-all instruction.
 
 The RYOT operator owns the dangerous parts:
 
 - approving source edits, builds, long experiments, and destructive commands;
 - deciding when jobs may run in parallel;
-- restarting stuck watchers;
+- maintaining or pausing prompt automations;
 - stopping the loop when the agents need judgment rather than more iteration.
-
-## RYOT-First Requests
-
-Once a RYOT process is active, every operator request that affects project
-decisions, documentation, scripts, source, artifacts, or release state enters
-the RYOT loop by default. The receiving LLM should reread `RYOT.md` and the
-relevant task checkpoint, then either answer through an existing handoff or
-append a fresh handoff before treating the request as complete.
-
-All decisions and implementations should iterate through the paired agents:
-one agent proposes or applies the smallest operator-approved change, the other
-agent reviews it, and the loop continues with `CHANGES_REQUESTED`,
-`CHANGES_APPLIED`, `CONVERGED`, or `HANDOFF_CONVERGED`. A direct operator
-instruction may decide priority or scope, but it should still be recorded in the
-task checkpoint and sent through RYOT before the job claims completion.
 
 ## Files And Roles
 
@@ -86,10 +72,9 @@ A minimal RYOT setup needs:
 ```text
 notes_for_agent_a.md
 notes_for_agent_b.md
-poll_agent_a.sh
-poll_agent_b.sh
 .handoff_agent_a_state
 .handoff_agent_b_state
+one prompt automation per active receiving agent
 ```
 
 In this repository the concrete names are:
@@ -97,11 +82,16 @@ In this repository the concrete names are:
 ```text
 notes_for_codex.md
 notes_for_claude.md
-poll_codex.sh
-poll_claude.sh
 .handoff_codex_state
 .handoff_claude_state
+Codex app heartbeat / prompt automation for each live role
 ```
+
+The `.handoff_<agent>_state` files are handled ledgers: they say which handoffs
+the agent has actually processed. RYOT no longer uses separate foreground
+poller delivery ledgers. A prompt automation may notice a handoff many times,
+but it must update handled state only after the receiving agent has actually
+accepted, rejected, blocked, or otherwise recorded that handoff.
 
 Agents can be symmetric peers, but most jobs benefit from temporary roles:
 
@@ -112,27 +102,42 @@ Proof author / Formalism critic
 Drafting agent / Style and correctness grader
 Patch author / Build-output diagnostician
 Doer / Thinker-planner
+Podo / Kodo
 ```
 
 State the roles in the first handoff for each job.
 
-## Doer / Thinker-Planner Split
+## Kodo / Podo Split
 
-For jobs that use a doer and a thinker-planner:
+Kodo and Podo are the preferred RYOT names for the thinker/doer split.
 
 ```text
-Doer             writes code, drafts prose, applies patches, and reports the
-                 exact changed files and uncertain points.
+Kodo  thinker-planner, reviewer, budget/order keeper, formalism critic,
+      UAT/checkpoint owner, and final acceptance gate.
 
-Thinker-planner  reads state, chooses the next concrete task, critiques the
-                 result, catches overclaims, and keeps the operator's approval
-                 gates explicit.
+Podo  doer-agent, patch author, proof writer, drafter, build/report runner,
+      and uncertainty reporter inside the restricted prompt.
 ```
 
-If there is unblocked work and the doer appears idle, the thinker-planner should
-send the next small actionable handoff rather than waiting passively. If the
-doer cannot continue, it should write `BLOCKED` with the smallest concrete
-question and stop.
+Routing ids and role names are separate. In this repository, `codex` is usually
+the Kodo route and `claude`, `antigravity`, or a second Codex thread may serve
+as Podo. A second Codex may be Podo only if it accepts the doer contract and
+does not claim Kodo's final gate-closing authority.
+
+For jobs that use Kodo/Podo:
+
+```text
+Podo  writes code, drafts prose, applies patches, runs authorized checks, and
+      reports exact changed files, hashes, output, and uncertain points.
+
+Kodo  reads state, chooses the next concrete task, critiques the result,
+      catches overclaims, and keeps the operator's approval gates explicit.
+```
+
+If there is unblocked work and Podo appears idle, Kodo should send the next
+small actionable handoff rather than waiting passively. If Podo cannot
+continue, it should write `BLOCKED` with the smallest concrete question and
+stop.
 
 ## Parallel Lanes
 
@@ -159,10 +164,10 @@ Several RYOT jobs may run on the same machine at once. Treat project scope as a
 first-class guardrail.
 
 Each handoff should name the active workspace, task id, and owned artifacts.
-Each watcher should trust its own inbox, its own state file, and checkpoint
-files inside the active workspace. Process lists, terminal chatter, and watcher
-output from another workspace are noise unless the operator explicitly connects
-the jobs.
+Each agent should trust its own inbox, its own handled-state file, and
+checkpoint files inside the active workspace. Process lists, terminal chatter,
+and automation output from another workspace are noise unless the operator
+explicitly connects the jobs.
 
 When another RYOT job is known to be noisy, add a constraint like:
 
@@ -241,19 +246,19 @@ repairs the artifact rather than pretending the book never made a claim.
 2. Choose roles for the first job.
 3. Create inbox files.
 4. Create state files with `last_turn=0`.
-5. Start one watcher per receiving agent.
+5. Create one prompt automation per receiving agent.
 6. Seed the first handoff with `respond_to_sha: RYOT_START_<task>`.
-7. Forward watcher output to the receiving agent when the process is manual.
+7. At each automation wake, have the agent check its own inbox directly.
 8. Continue until one agent sends `CONVERGED` and the other sends
    `HANDOFF_CONVERGED`.
-9. Stop the watchers or start the next job with a new task id.
+9. Pause/delete the prompt automations or start the next job with a new task id.
 
-To reset a stuck watcher without replaying stale turns:
+To recover from a missed wake without replaying stale turns:
 
-1. Stop the watcher.
+1. Pause the prompt automation if it is still firing badly.
 2. Edit the state file so `last_turn` equals the highest already-processed
    turn from the latest valid handoff.
-3. Restart the watcher.
+3. Re-enable the automation or send a one-time manual prompt to the agent.
 
 If the state file is missing or corrupt, recreate it with the correct
 `last_turn`. Starting from zero can replay the whole conversation.
@@ -295,7 +300,7 @@ constraint        permissions, build limits, edit limits, or user rules
 protocol_version  protocol version used by both agents
 ```
 
-Use exact agent ids. If the watcher expects `to: codex`, do not write
+Use exact agent ids. If the receiving role is `codex`, do not write
 `to: Codex`.
 
 ## Status Vocabulary
@@ -316,8 +321,8 @@ INFO_ONLY            informational; no action expected
 When an agent needs the RYOT operator, use `status: BLOCKED` and put the
 smallest concrete question in the body.
 
-Keep watcher behavior and human protocol aligned. A watcher may only stop on the
-exact status values it implements.
+Keep prompt-automation behavior and human protocol aligned. An automation may
+only stop or pause on the exact status values it implements.
 
 ## `respond_to_sha`
 
@@ -358,103 +363,54 @@ Turns are monotonic for the receiving agent. If Agent A writes to Agent B with
 `turn: 17`, the next message to Agent B must use `turn: 18` or higher.
 
 When retrying a bad handoff, always use a fresh turn. Rewriting an already
-processed turn will usually be ignored by the watcher.
+processed turn will usually be ignored by the receiving agent's handled-state
+check.
 
 Crossed turns are normal. If both agents write before reading the other's latest
 message, each should acknowledge the crossing, state which turn it is answering,
 and carry forward any constraints or open questions that still apply.
 
-## Watchers
+## Prompt Automations
 
-A watcher performs four jobs:
+RYOT uses the agent's own prompt automation as the wake mechanism. Do not rely
+on `poll_*.sh`, foreground shell loops, `tail -f`, or legacy delivery-state
+files as the live protocol.
 
-1. Poll the receiver's inbox.
-2. Parse the first `HANDOFF` header.
-3. Ignore stale, malformed, self-authored, or misaddressed messages.
-4. Print new messages and update the state file.
-
-Use the cheapest watcher that fits the job. For short handoffs, a foreground
-poller with a small interval is fine. For long builds, slow experiments, or
-operator-controlled runs, prefer a heartbeat watcher that wakes periodically,
-checks the inbox and output artifacts, then goes idle again. A 15-minute
-heartbeat is often enough to keep the loop alive without keeping an agent turn
-busy for hours.
-
-Minimal behavior:
+At each wake, the receiving agent performs one bounded check:
 
 ```text
 read INBOX
-extract from, to, turn, status, respond_to_sha
-if to != AGENT: ignore
-if from == AGENT: ignore
-if turn <= last_turn in state file: ignore
-print handoff
-write last_turn=turn to state file
-repeat
+find the newest valid HANDOFF addressed to AGENT
+ignore malformed, self-authored, or misaddressed handoffs
+compare turn against .handoff_<agent>_state
+if turn is fresh, handle the safe current unit of work
+record handled state only after the response/checkpoint is written
+stop
 ```
 
-State file format:
+The prompt automation is not a proof worker by itself. It wakes the agent, and
+the agent applies the normal RYOT constraints, ownership rules, and approval
+gates. During an active exchange, a 3-minute heartbeat is appropriate. During a
+quiet wait, use a slower cadence or pause the automation.
+
+The automation prompt should name:
 
 ```text
-last_turn=17
-```
-
-See the inline reference script below; copy and adapt as needed for your shell
-or runtime.
-
-## Reference Watcher
-
-Any watcher that reads the `HANDOFF` header, compares `turn` against a state
-file, and emits only new turns is conforming. This is one reference
-implementation:
-
-```sh
-#!/usr/bin/env bash
-# poll_inbox.sh - RYOT reference watcher
-set -euo pipefail
-
-AGENT="${1:?usage: poll_inbox.sh <agent_id> <inbox_file> <state_file> [interval]}"
-INBOX="${2:?}"
-STATE_FILE="${3:?}"
-INTERVAL="${4:-3}"
-
-[[ -f "$STATE_FILE" ]] || echo "last_turn=0" > "$STATE_FILE"
-
-extract() {
-  awk -v field="$1" '
-    /<!-- HANDOFF/ { in_block=1; next }
-    in_block && /-->/ { exit }
-    in_block {
-      sub(/^[ \t]+/, "")
-      if ($1 == field":") {
-        sub("^"field":[ \t]*", "")
-        print
-        exit
-      }
-    }
-  ' "$INBOX"
-}
-
-while true; do
-  [[ -s "$INBOX" ]] || { sleep "$INTERVAL"; continue; }
-  TO=$(extract to)
-  FROM=$(extract from)
-  TURN=$(extract turn)
-  LAST=$(sed -n 's/^last_turn=//p' "$STATE_FILE")
-  if [[ "$TO" == "$AGENT" && "$FROM" != "$AGENT" && "$TURN" -gt "$LAST" ]]; then
-    echo "=== NEW HANDOFF turn=$TURN from=$FROM ==="
-    cat "$INBOX"
-    echo "last_turn=$TURN" > "$STATE_FILE"
-  fi
-  sleep "$INTERVAL"
-done
+workspace root
+agent id
+inbox file
+handled-state file
+task checkpoint
+current lane constraints
+what to report when idle or blocked
 ```
 
 ## Inbox Discipline And Task Checkpoints
 
 RYOT inboxes are append-only while messages are in flight. Writers append new
-handoffs; they do not overwrite unread handoffs. Watchers track the highest
-processed turn per sender and emit every unread `HANDOFF` block in order.
+handoffs; they do not overwrite unread handoffs. Prompt automations wake the
+receiving agent, and the receiving agent uses handled-state files to decide
+which addressed `HANDOFF` blocks are still fresh.
 
 > [!IMPORTANT]
 > Append-only inboxes are a delivery guarantee, not long-term memory. When a
@@ -487,12 +443,11 @@ an unread handoff or an unresolved decision.
 
 A handoff may not be compacted until both conditions hold:
 
-1. The inbox watcher has emitted `INBOX_NEW` for it and the state file has
-   advanced.
+1. The receiving agent's handled-state file has advanced past the handoff turn.
 2. The relevant task checkpoint has been updated to absorb its content.
 
-Compaction races violate the delivery guarantee even when the watcher itself is
-correct.
+Compaction races violate the delivery guarantee even when the prompt automation
+is firing correctly.
 
 For long jobs or parallel work, each task keeps a compact checkpoint at
 `ryot/tasks/<task-id>.md`. The checkpoint is a state vector, not a transcript:
@@ -575,7 +530,7 @@ Agent A: status CHANGES_APPLIED; handing scope to agent_b
 Agent B: status CHANGES_APPLIED; edits made; scope returns to agent_a
 ```
 
-Concurrent edits to a single artifact can overwrite each other. The watcher
+Concurrent edits to a single artifact can overwrite each other. The automation
 cannot prevent this; the discipline must.
 
 ## Withdrawals And Corrections
@@ -637,9 +592,9 @@ the other agent every 15 minutes. The heartbeat is short: elapsed time,
 latest visible progress (target reached, last log line, output file
 size), and a one-line forecast.
 
-The point is to keep the loop alive without keeping an agent turn busy
-polling a silent file. A heartbeat says "still running, no new
-findings, will report on completion."
+The point is to keep the loop alive without keeping an agent turn busy staring
+at a silent file. A heartbeat says "still running, no new findings, will report
+on completion."
 
 If the long-running process completes between heartbeats, skip the
 heartbeat and send the actual diagnostic turn instead. If three
@@ -654,53 +609,26 @@ agent can re-anchor when the wait ends.
 ## Wake Mechanism
 
 A heartbeat discipline is only as reliable as the agent's wake mechanism. RYOT
-does not assume the harness wakes idle agents on a timer; it does require that
-the harness deliver one notification per inbox arrival and per heartbeat tick.
+uses the Codex app heartbeat / prompt-timer mechanism rather than shell
+pollers. The automation wakes the thread on a schedule and gives the agent a
+normal prompt; the agent then reads the inbox and state files itself.
 
-Two persistent watchers should run for each agent:
+For an active two-agent exchange, set the heartbeat to a short interval, usually
+3 minutes. For long quiet waits, slow the heartbeat or pause it.
 
-1. **Inbox watcher** --- polls the agent's inbox file, emits one line per new
-   handoff with `turn > last_turn` and `to=<agent>`. Under the append-only inbox
-   rule it emits one line per unread block in turn order.
-2. **Heartbeat watcher** --- emits one line every 15 minutes regardless of inbox
-   state, so the agent can post a no-news heartbeat to the other agent. The
-   heartbeat tick also serves as an "I am alive" signal: if no tick has arrived
-   in twice the interval, treat the watcher as dead and restart it.
+Each wake must be bounded:
 
-After sending an important handoff, the sending agent should run a short active
-poll window before falling back to the heartbeat watcher: about 20 checks at a
-small interval, usually 2-5 seconds. If no response arrives in that window, the
-agent goes idle and lets the persistent wake mechanism do the resource-saving
-work. When a wake trigger fires, the agent returns to the same short active poll
-window before going idle again.
+```text
+1. Inspect the agent's inbox.
+2. Compare the newest valid addressed handoff with handled state.
+3. If a fresh handoff exists, process exactly the current safe unit of work.
+4. If no fresh handoff exists, report a short idle status.
+5. Do not start a shell loop.
+6. Do not resurrect `poll_*.sh`.
+```
 
-For a live two-agent implementation sprint, the RYOT operator may request a
-tight active poll. In that mode, the receiving agent keeps its inbox watcher in
-the foreground at a small interval, usually one second, until the current burst
-of work quiets. After each accepted handoff, the agent updates the task
-checkpoint, recycles any processed inbox text at a safe boundary, sends the next
-small actionable turn, and keeps the foreground poll alive. When the sprint goes
-silent, the loop falls back to the heartbeat watcher.
-
-Both watchers must fail closed on corrupt or missing state files: emit a
-`STATE_CORRUPT` event and stop, rather than silently defaulting to zero or
-skipping turns. Both must ignore handoffs addressed to another agent or authored
-by the same agent.
-
-An operator-noticed inbox stall is a diagnostic event, not an ordinary resume.
-If an LLM stops processing RYOT inboxes and the RYOT operator notices, that
-LLM's next action must be to debug why it stopped watching the inbox before it
-continues task work. It should inspect its watcher state, scheduler or heartbeat
-status, inbox and state files, and last processed turn; record the cause or an
-explicit unknown; then resume from the newest valid handoff.
-
-Do not rely on scheduler primitives unless they have been tested under the
-actual workload, including background builds. Reference implementations may use
-a persistent monitor primitive; fall back to background `tail -f`-style
-processes if no such primitive is available.
-
-The wake mechanism is part of the protocol contract. If it cannot prove delivery
-of unread handoffs, the system must fall back to manual operator pings.
+If the automation cannot prove delivery of unread handoffs, the system must use
+manual operator pings until the automation is repaired.
 
 ## Pre-Convergence Checklist
 
@@ -759,7 +687,7 @@ enough when two tasks can produce independent turn sequences at the same time.
 Stale turn:
 
 ```text
-Symptom: watcher ignores the handoff.
+Symptom: agent ignores the handoff as already handled.
 Cause: turn number was already processed.
 Fix: resend with a higher turn number.
 ```
@@ -767,8 +695,8 @@ Fix: resend with a higher turn number.
 Wrong recipient:
 
 ```text
-Symptom: watcher says the file is addressed to another agent.
-Cause: `to:` does not match the watcher agent id.
+Symptom: agent says the file is addressed to another agent.
+Cause: `to:` does not match the receiving agent id.
 Fix: correct `to:` and bump the turn if needed.
 ```
 
@@ -776,7 +704,7 @@ Self-addressed loop:
 
 ```text
 Symptom: agent appears to answer itself.
-Cause: watcher or inbox is misconfigured.
+Cause: automation prompt or inbox route is misconfigured.
 Fix: ensure each agent writes only to the other agent's inbox.
 ```
 
@@ -950,8 +878,8 @@ For long-running experiments:
 - record settings;
 - do not change debug options without approval;
 - state what the next output should prove or disprove.
-- use heartbeat watchers for long waits so agents do not spend active turns
-  polling silent files;
+- use heartbeat prompt automations for long waits so agents do not spend active
+  turns staring at silent files;
 - send an `INFO_ONLY` heartbeat to the other agent every 15 minutes
   while waiting; see Heartbeat Updates above.
 
@@ -968,3 +896,13 @@ Write every handoff so the other agent can resume after forgetting the previous
 conversation. If that feels repetitive, it is probably doing its job.
 
 Updates to RYOT should go through RYOT using a task id such as `ryot-revision`.
+
+<!-- INFO_ONLY
+from: antigravity
+to: codex
+timestamp: 2026-06-12T12:35:25.590234
+-->
+
+# Antigravity Ping
+
+Kodo, I am still waiting for your response to Turn 90. I have checked my inbox several times and am standing by for the C02-S03 O2 outline or C02-S03 Outline Agreed handoff. 
