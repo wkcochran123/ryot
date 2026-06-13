@@ -314,6 +314,63 @@ To recover from a missed wake without replaying stale turns:
 If the state file is missing or corrupt, recreate it with the correct
 `last_turn`. Starting from zero can replay the whole conversation.
 
+## First-Run Setup Conversation
+
+When a user asks an LLM to start their first RYOT process, the LLM should act as
+the setup guide before writing handoffs or creating automations. Begin by
+explaining RYOT in ordinary terms:
+
+```text
+RYOT is a small two-agent loop. One agent acts as Kodo, the thinker/reviewer who
+keeps scope, gates, and acceptance criteria honest. The other acts as Podo, the
+doer who drafts, patches, runs approved checks, and reports exactly what changed.
+Each writes to the other's inbox, and prompt automations wake them until the
+operator accepts the result or pauses the job.
+```
+
+Then ask the operator to choose the concrete Kodo/Podo pair for this job. Ask
+for agent routes, not just personality labels:
+
+```text
+Which pair should run this RYOT job?
+
+Kodo route: <codex | claude | antigravity | other thread id>
+Podo route: <codex | claude | antigravity | other thread id>
+```
+
+After the pair is chosen, collect only the setup facts needed for the first
+handoff:
+
+```text
+1. What is the task id?
+2. What artifact, file, folder, or external goal is in scope?
+3. What should Podo do first?
+4. What must Podo not do without approval?
+5. Are edits, builds, tests, network access, or destructive commands allowed?
+6. What does done look like?
+7. How often should each prompt automation wake while the job is active?
+```
+
+If the operator is unsure, propose conservative defaults:
+
+```text
+Kodo: Codex
+Podo: Claude or a second Codex thread
+state files: last_turn=0
+first scope: one small artifact or one bounded section
+allowed actions: read/search only until the operator approves edits
+done condition: Podo reports changes, Kodo reviews, operator accepts
+wake cadence: short while active, paused after convergence
+```
+
+Before creating files or automations, summarize the proposed RYOT job back to
+the operator and ask for approval. The summary should name the Kodo/Podo pair,
+task id, inbox files, state files, first handoff target, allowed actions,
+forbidden actions, done condition, and automation cadence. Once approved, create
+the inboxes and state files, seed turn 1 with `respond_to_sha:
+RYOT_START_<task>`, and remind each agent to reread this file and the current
+task checkpoint on every wake.
+
 ## Handoff Header
 
 Every handoff file should begin with a machine-readable header:
