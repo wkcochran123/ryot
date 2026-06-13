@@ -139,6 +139,57 @@ small actionable handoff rather than waiting passively. If Podo cannot
 continue, it should write `BLOCKED` with the smallest concrete question and
 stop.
 
+## Beastmaster
+
+The beastmaster is an occasional "(semi)-outside verifier" layered over a
+Kodo/Podo job. Most jobs never need one. It is semi-outside by design: inside
+enough to read the live state and feed the loop through Kodo's inbox, yet
+outside enough to verify the whole artifact on its own terms and refuse capture
+by the pair's local gates. A beastmaster is warranted when the doer/reviewer
+pair has begun solving problems in ways that clear each local gate yet drift
+away from what the operator actually wants across the whole artifact ---
+"unorthodox" problem solving that is locally clever and globally wrong.
+
+```text
+Kodo / Podo   produce and review one section at a time.
+Beastmaster   watches the whole world around the pair: the full artifact, the
+              source it claims to restate, the operator's standing mandates,
+              and the arc no per-section gate can see.
+```
+
+Charter:
+
+```text
+- Give feedback, do not solve. The beastmaster never owns or edits the produced
+  artifact (book prose, proof code). It reads, judges, and reports.
+- Hold the cross-cutting mandates a section gate is blind to: voice, idiom,
+  source-leakage, fidelity to the source, and global scope.
+- Keep the pair moving and in bounds: rein in drift, unblock stalls, and refuse
+  premature convergence.
+- Own the completion call. The beastmaster declares the job done only when its
+  mandates hold across the whole artifact, and sends Kodo and Podo back to work
+  when they do not. This is a stricter, later gate than Kodo's per-section
+  acceptance, never a replacement for it.
+```
+
+Discipline:
+
+```text
+- Advisory to Kodo's gates. The beastmaster recommends; Kodo issues the gate to
+  Podo. The beastmaster does not open or close writing gates directly.
+- Do not corrupt the turn machinery. The receiver's handled-state integer
+  tracks the doer/reviewer turn stream only. Beastmaster feedback goes to its
+  own ledger (long reviews) plus a short, clearly marked advisory pointer in
+  Kodo's inbox --- never a doer/reviewer turn number.
+- Separate K-items from P-items. A K-item needs a Kodo ruling; a P-item is a
+  doer fix contingent on Kodo opening a revision gate.
+- One small cycle at a time. Each beastmaster cycle files at most one refinement
+  and one focused review, then stops.
+```
+
+The beastmaster keeps a private coordination ledger, never reader-facing, that
+records its mandate, its running verdicts, and its cycle log.
+
 ## Parallel Lanes
 
 A RYOT job may split into parallel lanes when the operator approves more than
